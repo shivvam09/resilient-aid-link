@@ -47,6 +47,26 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        emergency: {
+          DEFAULT: "hsl(var(--emergency))",
+          foreground: "hsl(var(--emergency-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
+        safe: {
+          DEFAULT: "hsl(var(--safe))",
+          foreground: "hsl(var(--safe-foreground))",
+        },
+        shelter: {
+          DEFAULT: "hsl(var(--shelter))",
+          foreground: "hsl(var(--shelter-foreground))",
+        },
+        resource: {
+          DEFAULT: "hsl(var(--resource))",
+          foreground: "hsl(var(--resource-foreground))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -84,6 +104,17 @@ export default {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "pulse-emergency": "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        "pulse-subtle": "pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+      },
+      backgroundImage: {
+        "gradient-emergency": "var(--gradient-emergency)",
+        "gradient-safe": "var(--gradient-safe)",
+        "gradient-map": "var(--gradient-map)",
+        "gradient-hero": "var(--gradient-hero)",
+      },
+      boxShadow: {
+        "emergency": "var(--pulse-emergency)",
       },
     },
   },
