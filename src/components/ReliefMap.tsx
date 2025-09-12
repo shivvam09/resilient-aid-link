@@ -1,8 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Shield, Heart, Users, Navigation, Layers } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { MapPin, Shield, Heart, Users, Navigation, Layers, Compass } from "lucide-react";
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
 
 interface MapLocation {
   id: string;
@@ -19,6 +23,10 @@ interface MapLocation {
 const ReliefMap = () => {
   const [selectedType, setSelectedType] = useState<string>('all');
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [mapboxToken, setMapboxToken] = useState<string>('');
+  const [compass, setCompass] = useState<number>(0);
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const map = useRef<mapboxgl.Map | null>(null);
 
   // Mock data - In real app, this would come from GPS/offline database
   const mapLocations: MapLocation[] = [
@@ -69,18 +77,87 @@ const ReliefMap = () => {
   ];
 
   useEffect(() => {
-    // Get user location for offline mode
+    // Get user location and initialize map
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          setUserLocation({
+          const location = {
             lat: position.coords.latitude,
             lng: position.coords.longitude
-          });
+          };
+          setUserLocation(location);
+          
+          // Initialize map with user location
+          if (mapboxToken && mapContainer.current && !map.current) {
+            initializeMap(location);
+          }
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          // Fallback to default location (New Delhi)
+          const defaultLocation = { lat: 28.6139, lng: 77.2090 };
+          setUserLocation(defaultLocation);
+          if (mapboxToken && mapContainer.current && !map.current) {
+            initializeMap(defaultLocation);
+          }
         }
       );
     }
-  }, []);
+
+    // Compass functionality
+    if ('DeviceOrientationEvent' in window) {
+      const handleOrientation = (event: DeviceOrientationEvent) => {
+        if (event.alpha !== null) {
+          setCompass(360 - event.alpha);
+        }
+      };
+      window.addEventListener('deviceorientation', handleOrientation);
+      return () => window.removeEventListener('deviceorientation', handleOrientation);
+    }
+  }, [mapboxToken]);
+
+  const initializeMap = (location: {lat: number, lng: number}) => {
+    if (!mapContainer.current || !mapboxToken) return;
+
+    mapboxgl.accessToken = mapboxToken;
+    
+    map.current = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: 'mapbox://styles/mapbox/satellite-streets-v12',
+      center: [location.lng, location.lat],
+      zoom: 12
+    });
+
+    // Add navigation controls
+    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    
+    // Add user location marker
+    new mapboxgl.Marker({ color: '#ef4444' })
+      .setLngLat([location.lng, location.lat])
+      .setPopup(new mapboxgl.Popup().setHTML('<h3>Your Location</h3>'))
+      .addTo(map.current);
+
+    // Add shelter and safe zone markers
+    mapLocations.forEach((loc) => {
+      const color = loc.type === 'shelter' ? '#22c55e' : 
+                   loc.type === 'safe_zone' ? '#3b82f6' :
+                   loc.type === 'resource_center' ? '#f59e0b' :
+                   loc.type === 'volunteer_hub' ? '#8b5cf6' :
+                   '#ef4444';
+
+      new mapboxgl.Marker({ color })
+        .setLngLat([loc.longitude, loc.latitude])
+        .setPopup(new mapboxgl.Popup().setHTML(`
+          <div class="p-2">
+            <h3 class="font-semibold">${loc.name}</h3>
+            <p class="text-sm text-gray-600">${loc.type.replace('_', ' ').toUpperCase()}</p>
+            ${loc.distance ? `<p class="text-xs">Distance: ${loc.distance} km</p>` : ''}
+            ${loc.resources ? `<p class="text-xs">Resources: ${loc.resources.join(', ')}</p>` : ''}
+          </div>
+        `))
+        .addTo(map.current!);
+    });
+  };
 
   const getLocationIcon = (type: string) => {
     switch (type) {
@@ -162,47 +239,77 @@ const ReliefMap = () => {
             </Button>
           </div>
 
-          {/* Simulated Map Area - In real app, this would be actual map */}
-          <div className="w-full h-64 bg-gradient-map rounded-lg border-2 border-dashed border-border flex items-center justify-center relative overflow-hidden">
-            <div className="text-center text-muted-foreground">
-              <MapPin className="w-12 h-12 mx-auto mb-2" />
-              <div className="text-lg font-semibold">Interactive Map</div>
-              <div className="text-sm">GPS + Offline Database</div>
+          {/* Mapbox Token Input */}
+          {!mapboxToken && (
+            <div className="mb-4 p-4 bg-muted rounded-lg">
+              <Label htmlFor="mapbox-token" className="text-sm font-medium">
+                Enter Mapbox Public Token (Get it from mapbox.com)
+              </Label>
+              <div className="flex gap-2 mt-2">
+                <Input
+                  id="mapbox-token"
+                  placeholder="pk.eyJ1..."
+                  value={mapboxToken}
+                  onChange={(e) => setMapboxToken(e.target.value)}
+                  className="flex-1"
+                />
+                <Button 
+                  onClick={() => userLocation && initializeMap(userLocation)}
+                  disabled={!mapboxToken || !userLocation}
+                  size="sm"
+                >
+                  Load Map
+                </Button>
+              </div>
             </div>
+          )}
+
+          {/* Interactive World Map */}
+          <div className="relative w-full h-96 rounded-lg overflow-hidden border">
+            <div ref={mapContainer} className="absolute inset-0" />
             
-            {/* Simulated location pins */}
-            <div className="absolute inset-0 p-4">
-              {filteredLocations.slice(0, 3).map((location, index) => {
-                const Icon = getLocationIcon(location.type);
-                const color = getLocationColor(location.type);
-                return (
-                  <div 
-                    key={location.id}
-                    className={`absolute w-6 h-6 rounded-full flex items-center justify-center ${
-                      color === 'shelter' ? 'bg-shelter' :
-                      color === 'safe' ? 'bg-safe' :
-                      color === 'resource' ? 'bg-resource' :
-                      color === 'emergency' ? 'bg-emergency animate-pulse-emergency' :
-                      'bg-primary'
-                    }`}
-                    style={{
-                      left: `${20 + index * 25}%`,
-                      top: `${30 + index * 15}%`
-                    }}
-                  >
-                    <Icon className="w-3 h-3 text-white" />
-                  </div>
-                );
-              })}
-              
-              {/* User location */}
-              {userLocation && (
-                <div className="absolute w-4 h-4 bg-primary rounded-full animate-pulse-subtle" 
-                     style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>
-                  <div className="w-2 h-2 bg-white rounded-full absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
-                </div>
-              )}
+            {/* Compass */}
+            <div className="absolute top-4 left-4 bg-background/90 backdrop-blur-sm rounded-full p-3 shadow-lg">
+              <div 
+                className="w-8 h-8 flex items-center justify-center transition-transform duration-300"
+                style={{ transform: `rotate(${compass}deg)` }}
+              >
+                <Compass className="w-6 h-6 text-primary" />
+              </div>
             </div>
+
+            {/* Map Legend */}
+            <div className="absolute bottom-4 right-4 bg-background/90 backdrop-blur-sm rounded-lg p-3 shadow-lg">
+              <div className="text-xs font-semibold mb-2">Legend</div>
+              <div className="space-y-1 text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                  <span>Your Location</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                  <span>Shelters</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                  <span>Safe Zones</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                  <span>Resources</span>
+                </div>
+              </div>
+            </div>
+
+            {!mapboxToken && (
+              <div className="absolute inset-0 bg-gradient-map rounded-lg flex items-center justify-center">
+                <div className="text-center text-muted-foreground">
+                  <MapPin className="w-12 h-12 mx-auto mb-2" />
+                  <div className="text-lg font-semibold">World Map</div>
+                  <div className="text-sm">Enter Mapbox token to load</div>
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
