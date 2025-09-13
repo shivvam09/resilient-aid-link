@@ -23,7 +23,7 @@ interface MapLocation {
 const ReliefMap = () => {
   const [selectedType, setSelectedType] = useState<string>('all');
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
-  const [mapboxToken, setMapboxToken] = useState<string>('');
+  const [mapboxToken] = useState<string>('pk.eyJ1IjoiZmxleHk5MCIsImEiOiJjbWZoNHRxM2kwN2hhMmtvaHZ5aHo4a2poIn0.STMCDnXJAAto5kIqslI2Mg');
   const [compass, setCompass] = useState<number>(0);
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -239,30 +239,6 @@ const ReliefMap = () => {
             </Button>
           </div>
 
-          {/* Mapbox Token Input */}
-          {!mapboxToken && (
-            <div className="mb-4 p-4 bg-muted rounded-lg">
-              <Label htmlFor="mapbox-token" className="text-sm font-medium">
-                Enter Mapbox Public Token (Get it from mapbox.com)
-              </Label>
-              <div className="flex gap-2 mt-2">
-                <Input
-                  id="mapbox-token"
-                  placeholder="pk.eyJ1..."
-                  value={mapboxToken}
-                  onChange={(e) => setMapboxToken(e.target.value)}
-                  className="flex-1"
-                />
-                <Button 
-                  onClick={() => userLocation && initializeMap(userLocation)}
-                  disabled={!mapboxToken || !userLocation}
-                  size="sm"
-                >
-                  Load Map
-                </Button>
-              </div>
-            </div>
-          )}
 
           {/* Interactive World Map */}
           <div className="relative w-full h-96 rounded-lg overflow-hidden border">
@@ -301,15 +277,6 @@ const ReliefMap = () => {
               </div>
             </div>
 
-            {!mapboxToken && (
-              <div className="absolute inset-0 bg-gradient-map rounded-lg flex items-center justify-center">
-                <div className="text-center text-muted-foreground">
-                  <MapPin className="w-12 h-12 mx-auto mb-2" />
-                  <div className="text-lg font-semibold">World Map</div>
-                  <div className="text-sm">Enter Mapbox token to load</div>
-                </div>
-              </div>
-            )}
           </div>
         </CardContent>
       </Card>
