@@ -30,6 +30,7 @@ const ReliefMap = () => {
 
   // Mock data - In real app, this would come from GPS/offline database
   const mapLocations: MapLocation[] = [
+    // Shelters
     {
       id: '1',
       name: 'Government Emergency Shelter',
@@ -43,14 +44,94 @@ const ReliefMap = () => {
     },
     {
       id: '2',
-      name: 'Community Safe Zone',
+      name: 'Red Cross Emergency Shelter',
+      type: 'shelter',
+      latitude: 28.6179,
+      longitude: 77.2110,
+      capacity: 300,
+      available: true,
+      distance: 2.8,
+      resources: ['Food', 'Water', 'Blankets']
+    },
+    {
+      id: '3',
+      name: 'Community Center Shelter',
+      type: 'shelter',
+      latitude: 28.6099,
+      longitude: 77.2050,
+      capacity: 200,
+      available: false,
+      distance: 1.9,
+      resources: ['Food', 'Medical']
+    },
+    {
+      id: '4',
+      name: 'School Emergency Shelter',
+      type: 'shelter',
+      latitude: 28.6159,
+      longitude: 77.2130,
+      capacity: 400,
+      available: true,
+      distance: 3.1,
+      resources: ['Food', 'Water', 'Medical', 'Education']
+    },
+    {
+      id: '5',
+      name: 'NGO Relief Shelter',
+      type: 'shelter',
+      latitude: 28.6119,
+      longitude: 77.2070,
+      capacity: 250,
+      available: true,
+      distance: 2.5,
+      resources: ['Food', 'Water', 'Clothing']
+    },
+
+    // Safe Zones
+    {
+      id: '6',
+      name: 'Central Park Safe Zone',
       type: 'safe_zone',
       latitude: 28.6129,
       longitude: 77.2290,
       distance: 1.8,
     },
     {
-      id: '3',
+      id: '7',
+      name: 'Stadium Safe Zone',
+      type: 'safe_zone',
+      latitude: 28.6199,
+      longitude: 77.2150,
+      distance: 2.4,
+    },
+    {
+      id: '8',
+      name: 'University Campus Safe Zone',
+      type: 'safe_zone',
+      latitude: 28.6089,
+      longitude: 77.2190,
+      distance: 1.6,
+    },
+    {
+      id: '9',
+      name: 'Metro Station Safe Zone',
+      type: 'safe_zone',
+      latitude: 28.6169,
+      longitude: 77.2030,
+      distance: 2.1,
+    },
+    {
+      id: '10',
+      name: 'Hospital Compound Safe Zone',
+      type: 'safe_zone',
+      latitude: 28.6109,
+      longitude: 77.2110,
+      distance: 1.4,
+    },
+
+    // Resource Centers
+    {
+      id: '11',
       name: 'Red Cross Resource Center',
       type: 'resource_center',
       latitude: 28.6239,
@@ -59,20 +140,100 @@ const ReliefMap = () => {
       resources: ['Medicine', 'Blankets', 'Food Packets']
     },
     {
-      id: '4',
-      name: 'Volunteer Coordination Hub',
+      id: '12',
+      name: 'WHO Medical Supply Center',
+      type: 'resource_center',
+      latitude: 28.6059,
+      longitude: 77.2140,
+      distance: 1.7,
+      resources: ['Medicine', 'First Aid', 'Oxygen']
+    },
+    {
+      id: '13',
+      name: 'Food Distribution Center',
+      type: 'resource_center',
+      latitude: 28.6189,
+      longitude: 77.2070,
+      distance: 2.6,
+      resources: ['Food Packets', 'Water', 'Baby Food']
+    },
+    {
+      id: '14',
+      name: 'Clothing Distribution Hub',
+      type: 'resource_center',
+      latitude: 28.6149,
+      longitude: 77.2210,
+      distance: 2.9,
+      resources: ['Clothing', 'Blankets', 'Shoes']
+    },
+    {
+      id: '15',
+      name: 'Emergency Supply Depot',
+      type: 'resource_center',
+      latitude: 28.6079,
+      longitude: 77.2030,
+      distance: 1.3,
+      resources: ['Water', 'Emergency Kits', 'Tools']
+    },
+
+    // Volunteer Hubs
+    {
+      id: '16',
+      name: 'Main Volunteer Coordination Hub',
       type: 'volunteer_hub',
       latitude: 28.6339,
       longitude: 77.2390,
       distance: 4.2,
     },
     {
-      id: '5',
-      name: 'Active Emergency Zone',
+      id: '17',
+      name: 'Youth Volunteer Center',
+      type: 'volunteer_hub',
+      latitude: 28.6219,
+      longitude: 77.2250,
+      distance: 3.5,
+    },
+    {
+      id: '18',
+      name: 'Community Volunteer Base',
+      type: 'volunteer_hub',
+      latitude: 28.6299,
+      longitude: 77.2170,
+      distance: 3.8,
+    },
+    {
+      id: '19',
+      name: 'NGO Volunteer Center',
+      type: 'volunteer_hub',
+      latitude: 28.6379,
+      longitude: 77.2310,
+      distance: 4.5,
+    },
+    {
+      id: '20',
+      name: 'Emergency Response Team Hub',
+      type: 'volunteer_hub',
+      latitude: 28.6259,
+      longitude: 77.2290,
+      distance: 3.6,
+    },
+
+    // Emergency Zones
+    {
+      id: '21',
+      name: 'Flood Affected Area',
       type: 'emergency',
       latitude: 28.6039,
       longitude: 77.1990,
       distance: 1.2,
+    },
+    {
+      id: '22',
+      name: 'Building Collapse Site',
+      type: 'emergency',
+      latitude: 28.6279,
+      longitude: 77.2350,
+      distance: 3.9,
     }
   ];
 
