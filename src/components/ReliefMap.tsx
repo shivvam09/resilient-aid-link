@@ -286,16 +286,61 @@ const ReliefMap = () => {
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/satellite-streets-v12',
       center: [location.lng, location.lat],
-      zoom: 12
+      zoom: 12,
+      scrollZoom: true
     });
 
+    // Disable scroll zoom interference with page scroll
+    map.current.scrollZoom.setWheelZoomRate(1/450);
+    
     // Add navigation controls
     map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
     
-    // Add user location marker
-    new mapboxgl.Marker({ color: '#ef4444' })
+    // Add user location marker with custom styling
+    const userMarkerElement = document.createElement('div');
+    userMarkerElement.className = 'user-location-marker';
+    userMarkerElement.style.cssText = `
+      width: 40px;
+      height: 40px;
+      background: radial-gradient(circle, #ef4444 40%, transparent 70%);
+      border: 4px solid #ef4444;
+      border-radius: 50%;
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.6), 0 4px 12px rgba(0,0,0,0.3);
+      cursor: pointer;
+      position: relative;
+      animation: userLocationPulse 2s infinite;
+    `;
+    
+    // Add pulsing animation for user location
+    const userLocationStyle = document.createElement('style');
+    userLocationStyle.textContent = `
+      @keyframes userLocationPulse {
+        0% { 
+          transform: scale(1);
+          box-shadow: 0 0 20px rgba(239, 68, 68, 0.6), 0 4px 12px rgba(0,0,0,0.3);
+        }
+        50% { 
+          transform: scale(1.1);
+          box-shadow: 0 0 30px rgba(239, 68, 68, 0.8), 0 6px 16px rgba(0,0,0,0.4);
+        }
+        100% { 
+          transform: scale(1);
+          box-shadow: 0 0 20px rgba(239, 68, 68, 0.6), 0 4px 12px rgba(0,0,0,0.3);
+        }
+      }
+    `;
+    document.head.appendChild(userLocationStyle);
+
+    new mapboxgl.Marker(userMarkerElement)
       .setLngLat([location.lng, location.lat])
-      .setPopup(new mapboxgl.Popup().setHTML('<h3>Your Location</h3>'))
+      .setPopup(new mapboxgl.Popup({ offset: 25 }).setHTML(`
+        <div class="p-3 min-w-[180px]">
+          <h3 class="font-semibold text-blue-600 mb-1">📍 Your Current Location</h3>
+          <p class="text-sm text-gray-600">Lat: ${location.lat.toFixed(6)}</p>
+          <p class="text-sm text-gray-600">Lng: ${location.lng.toFixed(6)}</p>
+          <p class="text-xs text-green-600 mt-2">✅ GPS Active</p>
+        </div>
+      `))
       .addTo(map.current);
 
     // Add location markers with enhanced visibility
@@ -454,8 +499,8 @@ const ReliefMap = () => {
 
 
           {/* Interactive World Map */}
-          <div className="relative w-full h-96 rounded-lg overflow-hidden border">
-            <div ref={mapContainer} className="absolute inset-0" />
+          <div className="relative w-full h-96 rounded-lg overflow-hidden border touch-none">
+            <div ref={mapContainer} className="absolute inset-0 touch-none" />
             
             {/* Compass */}
             <div className="absolute top-4 left-4 bg-background/90 backdrop-blur-sm rounded-full p-3 shadow-lg">
