@@ -137,22 +137,74 @@ const ReliefMap = () => {
       .setPopup(new mapboxgl.Popup().setHTML('<h3>Your Location</h3>'))
       .addTo(map.current);
 
-    // Add shelter and safe zone markers
+    // Add location markers with enhanced visibility
     mapLocations.forEach((loc) => {
-      const color = loc.type === 'shelter' ? '#22c55e' : 
-                   loc.type === 'safe_zone' ? '#3b82f6' :
-                   loc.type === 'resource_center' ? '#f59e0b' :
-                   loc.type === 'volunteer_hub' ? '#8b5cf6' :
-                   '#ef4444';
+      const color = loc.type === 'shelter' ? '#16a34a' : 
+                   loc.type === 'safe_zone' ? '#2563eb' :
+                   loc.type === 'resource_center' ? '#ea580c' :
+                   loc.type === 'volunteer_hub' ? '#7c3aed' :
+                   '#dc2626';
 
-      new mapboxgl.Marker({ color })
+      // Create custom marker element for better visibility
+      const markerElement = document.createElement('div');
+      markerElement.className = 'marker-custom';
+      markerElement.style.cssText = `
+        width: 30px;
+        height: 30px;
+        background-color: ${color};
+        border: 3px solid white;
+        border-radius: 50%;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      `;
+
+      // Add icon to marker
+      const iconElement = document.createElement('div');
+      iconElement.style.cssText = `
+        color: white;
+        font-size: 12px;
+        font-weight: bold;
+      `;
+      iconElement.innerHTML = loc.type === 'shelter' ? '🏠' : 
+                             loc.type === 'safe_zone' ? '🛡️' :
+                             loc.type === 'resource_center' ? '📦' :
+                             loc.type === 'volunteer_hub' ? '👥' :
+                             '⚠️';
+      markerElement.appendChild(iconElement);
+
+      // Add pulsing animation for emergency locations
+      if (loc.type === 'emergency') {
+        markerElement.style.animation = 'pulse 2s infinite';
+        const style = document.createElement('style');
+        style.textContent = `
+          @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(220, 38, 38, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+          }
+        `;
+        document.head.appendChild(style);
+      }
+
+      new mapboxgl.Marker(markerElement)
         .setLngLat([loc.longitude, loc.latitude])
-        .setPopup(new mapboxgl.Popup().setHTML(`
-          <div class="p-2">
-            <h3 class="font-semibold">${loc.name}</h3>
-            <p class="text-sm text-gray-600">${loc.type.replace('_', ' ').toUpperCase()}</p>
-            ${loc.distance ? `<p class="text-xs">Distance: ${loc.distance} km</p>` : ''}
-            ${loc.resources ? `<p class="text-xs">Resources: ${loc.resources.join(', ')}</p>` : ''}
+        .setPopup(new mapboxgl.Popup({ offset: 25 }).setHTML(`
+          <div class="p-3 min-w-[200px]">
+            <h3 class="font-semibold text-gray-900 mb-1">${loc.name}</h3>
+            <p class="text-sm text-gray-600 mb-2 capitalize">${loc.type.replace('_', ' ')}</p>
+            ${loc.distance ? `<p class="text-xs text-blue-600 font-medium">📍 ${loc.distance} km away</p>` : ''}
+            ${loc.capacity ? `<p class="text-xs text-green-600">👥 Capacity: ${loc.capacity}</p>` : ''}
+            ${loc.available !== undefined ? `<p class="text-xs ${loc.available ? 'text-green-600' : 'text-red-600'}">
+              ${loc.available ? '✅ Available' : '❌ Full'}
+            </p>` : ''}
+            ${loc.resources ? `<div class="mt-2">
+              <p class="text-xs font-medium text-gray-700">Available Resources:</p>
+              <p class="text-xs text-gray-600">${loc.resources.join(', ')}</p>
+            </div>` : ''}
           </div>
         `))
         .addTo(map.current!);
