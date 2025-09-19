@@ -5,8 +5,14 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MapPin, Shield, Heart, Users, Navigation, Layers, Compass } from "lucide-react";
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
+
+// Google Maps type declarations
+declare global {
+  interface Window {
+    google: any;
+    initMap: () => void;
+  }
+}
 
 interface MapLocation {
   id: string;
@@ -23,10 +29,11 @@ interface MapLocation {
 const ReliefMap = () => {
   const [selectedType, setSelectedType] = useState<string>('all');
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
-  const [mapboxToken] = useState<string>('pk.eyJ1IjoiZmxleHk5MCIsImEiOiJjbWZoNHRxM2kwN2hhMmtvaHZ5aHo4a2poIn0.STMCDnXJAAto5kIqslI2Mg');
+  const [isMapLoaded, setIsMapLoaded] = useState<boolean>(false);
   const [compass, setCompass] = useState<number>(0);
   const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
+  const map = useRef<any>(null);
+  const markers = useRef<any[]>([]);
 
   // Mock data - In real app, this would come from GPS/offline database
   const mapLocations: MapLocation[] = [
@@ -238,32 +245,22 @@ const ReliefMap = () => {
   ];
 
   useEffect(() => {
-    // Get user location and initialize map
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const location = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          };
-          setUserLocation(location);
-          
-          // Initialize map with user location
-          if (mapboxToken && mapContainer.current && !map.current) {
-            initializeMap(location);
-          }
-        },
-        (error) => {
-          console.error('Error getting location:', error);
-          // Fallback to default location (New Delhi)
-          const defaultLocation = { lat: 28.6139, lng: 77.2090 };
-          setUserLocation(defaultLocation);
-          if (mapboxToken && mapContainer.current && !map.current) {
-            initializeMap(defaultLocation);
-          }
-        }
-      );
-    }
+    // Load Google Maps API
+    const loadGoogleMaps = () => {
+      if (window.google) {
+        setIsMapLoaded(true);
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.GOOGLE_MAPS_API_KEY || 'YOUR_API_KEY'}&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => setIsMapLoaded(true);
+      document.head.appendChild(script);
+    };
+
+    loadGoogleMaps();
 
     // Compass functionality
     if ('DeviceOrientationEvent' in window) {
@@ -275,75 +272,146 @@ const ReliefMap = () => {
       window.addEventListener('deviceorientation', handleOrientation);
       return () => window.removeEventListener('deviceorientation', handleOrientation);
     }
-  }, [mapboxToken]);
+  }, []);
+
+  useEffect(() => {
+    if (!isMapLoaded) return;
+
+    // Get user location and initialize map
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const location = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          };
+          setUserLocation(location);
+          
+          // Initialize map with user location
+          if (mapContainer.current && !map.current) {
+            initializeMap(location);
+          }
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          // Fallback to default location (New Delhi)
+          const defaultLocation = { lat: 28.6139, lng: 77.2090 };
+          setUserLocation(defaultLocation);
+          if (mapContainer.current && !map.current) {
+            initializeMap(defaultLocation);
+          }
+        }
+      );
+    } else {
+      // Fallback to default location if geolocation is not available
+      const defaultLocation = { lat: 28.6139, lng: 77.2090 };
+      setUserLocation(defaultLocation);
+      if (mapContainer.current && !map.current) {
+        initializeMap(defaultLocation);
+      }
+    }
+  }, [isMapLoaded]);
 
   const initializeMap = (location: {lat: number, lng: number}) => {
-    if (!mapContainer.current || !mapboxToken) return;
+    if (!mapContainer.current || !window.google) return;
 
-    mapboxgl.accessToken = mapboxToken;
-    
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/satellite-streets-v12',
-      center: [location.lng, location.lat],
+    // Clear existing markers
+    markers.current.forEach(marker => marker.setMap(null));
+    markers.current = [];
+
+    // Initialize Google Map
+    map.current = new window.google.maps.Map(mapContainer.current, {
+      center: location,
       zoom: 12,
-      scrollZoom: true
+      mapTypeId: window.google.maps.MapTypeId.HYBRID,
+      styles: [
+        {
+          featureType: "poi",
+          elementType: "labels",
+          stylers: [{ visibility: "off" }]
+        }
+      ],
+      scrollwheel: true,
+      gestureHandling: 'greedy'
     });
 
-    // Disable scroll zoom interference with page scroll
-    map.current.scrollZoom.setWheelZoomRate(1/450);
-    
-    // Add navigation controls
-    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
-    
-    // Add user location marker with custom styling
+    // Add pulsing animation styles
+    const userLocationStyle = document.createElement('style');
+    userLocationStyle.textContent = `
+      @keyframes userLocationPulse {
+        0% { 
+          transform: scale(1);
+          box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
+        }
+        50% { 
+          transform: scale(1.1);
+          box-shadow: 0 0 30px rgba(239, 68, 68, 0.8);
+        }
+        100% { 
+          transform: scale(1);
+          box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
+        }
+      }
+      @keyframes emergencyPulse {
+        0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(220, 38, 38, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+      }
+    `;
+    document.head.appendChild(userLocationStyle);
+
+    // Create user location marker
     const userMarkerElement = document.createElement('div');
-    userMarkerElement.className = 'user-location-marker';
     userMarkerElement.style.cssText = `
       width: 40px;
       height: 40px;
       background: radial-gradient(circle, #ef4444 40%, transparent 70%);
       border: 4px solid #ef4444;
       border-radius: 50%;
-      box-shadow: 0 0 20px rgba(239, 68, 68, 0.6), 0 4px 12px rgba(0,0,0,0.3);
       cursor: pointer;
       position: relative;
       animation: userLocationPulse 2s infinite;
     `;
-    
-    // Add pulsing animation for user location
-    const userLocationStyle = document.createElement('style');
-    userLocationStyle.textContent = `
-      @keyframes userLocationPulse {
-        0% { 
-          transform: scale(1);
-          box-shadow: 0 0 20px rgba(239, 68, 68, 0.6), 0 4px 12px rgba(0,0,0,0.3);
-        }
-        50% { 
-          transform: scale(1.1);
-          box-shadow: 0 0 30px rgba(239, 68, 68, 0.8), 0 6px 16px rgba(0,0,0,0.4);
-        }
-        100% { 
-          transform: scale(1);
-          box-shadow: 0 0 20px rgba(239, 68, 68, 0.6), 0 4px 12px rgba(0,0,0,0.3);
-        }
+
+    const userMarker = new window.google.maps.Marker({
+      position: location,
+      map: map.current,
+      title: "Your Current Location",
+      icon: {
+        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+          <svg width="40" height="40" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <radialGradient id="grad" cx="50%" cy="50%" r="50%">
+                <stop offset="40%" style="stop-color:#ef4444;stop-opacity:1" />
+                <stop offset="70%" style="stop-color:#ef4444;stop-opacity:0" />
+              </radialGradient>
+            </defs>
+            <circle cx="20" cy="20" r="16" fill="url(#grad)" stroke="#ef4444" stroke-width="4"/>
+          </svg>
+        `),
+        scaledSize: new window.google.maps.Size(40, 40),
+        anchor: new window.google.maps.Point(20, 20)
       }
-    `;
-    document.head.appendChild(userLocationStyle);
+    });
 
-    new mapboxgl.Marker(userMarkerElement)
-      .setLngLat([location.lng, location.lat])
-      .setPopup(new mapboxgl.Popup({ offset: 25 }).setHTML(`
-        <div class="p-3 min-w-[180px]">
-          <h3 class="font-semibold text-blue-600 mb-1">📍 Your Current Location</h3>
-          <p class="text-sm text-gray-600">Lat: ${location.lat.toFixed(6)}</p>
-          <p class="text-sm text-gray-600">Lng: ${location.lng.toFixed(6)}</p>
-          <p class="text-xs text-green-600 mt-2">✅ GPS Active</p>
+    const userInfoWindow = new window.google.maps.InfoWindow({
+      content: `
+        <div style="padding: 12px; min-width: 180px;">
+          <h3 style="font-weight: 600; color: #2563eb; margin-bottom: 4px;">📍 Your Current Location</h3>
+          <p style="font-size: 14px; color: #6b7280;">Lat: ${location.lat.toFixed(6)}</p>
+          <p style="font-size: 14px; color: #6b7280;">Lng: ${location.lng.toFixed(6)}</p>
+          <p style="font-size: 12px; color: #16a34a; margin-top: 8px;">✅ GPS Active</p>
         </div>
-      `))
-      .addTo(map.current);
+      `
+    });
 
-    // Add location markers with enhanced visibility
+    userMarker.addListener('click', () => {
+      userInfoWindow.open(map.current, userMarker);
+    });
+
+    markers.current.push(userMarker);
+
+    // Add location markers
     mapLocations.forEach((loc) => {
       const color = loc.type === 'shelter' ? '#16a34a' : 
                    loc.type === 'safe_zone' ? '#2563eb' :
@@ -351,9 +419,7 @@ const ReliefMap = () => {
                    loc.type === 'volunteer_hub' ? '#7c3aed' :
                    '#dc2626';
 
-      // Create custom marker element for better visibility
       const markerElement = document.createElement('div');
-      markerElement.className = 'marker-custom';
       markerElement.style.cssText = `
         width: 30px;
         height: 30px;
@@ -366,9 +432,9 @@ const ReliefMap = () => {
         align-items: center;
         justify-content: center;
         position: relative;
+        ${loc.type === 'emergency' ? 'animation: emergencyPulse 2s infinite;' : ''}
       `;
 
-      // Add icon to marker
       const iconElement = document.createElement('div');
       iconElement.style.cssText = `
         color: white;
@@ -382,38 +448,51 @@ const ReliefMap = () => {
                              '⚠️';
       markerElement.appendChild(iconElement);
 
-      // Add pulsing animation for emergency locations
-      if (loc.type === 'emergency') {
-        markerElement.style.animation = 'pulse 2s infinite';
-        const style = document.createElement('style');
-        style.textContent = `
-          @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(220, 38, 38, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
-          }
-        `;
-        document.head.appendChild(style);
-      }
+      const marker = new window.google.maps.Marker({
+        position: { lat: loc.latitude, lng: loc.longitude },
+        map: map.current,
+        title: loc.name,
+        icon: {
+          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+            <svg width="30" height="30" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="15" cy="15" r="12" fill="${color}" stroke="white" stroke-width="3"/>
+              <text x="15" y="20" text-anchor="middle" font-size="12" fill="white">
+                ${loc.type === 'shelter' ? '🏠' : 
+                  loc.type === 'safe_zone' ? '🛡️' :
+                  loc.type === 'resource_center' ? '📦' :
+                  loc.type === 'volunteer_hub' ? '👥' :
+                  '⚠️'}
+              </text>
+            </svg>
+          `),
+          scaledSize: new window.google.maps.Size(30, 30),
+          anchor: new window.google.maps.Point(15, 15)
+        }
+      });
 
-      new mapboxgl.Marker(markerElement)
-        .setLngLat([loc.longitude, loc.latitude])
-        .setPopup(new mapboxgl.Popup({ offset: 25 }).setHTML(`
-          <div class="p-3 min-w-[200px]">
-            <h3 class="font-semibold text-gray-900 mb-1">${loc.name}</h3>
-            <p class="text-sm text-gray-600 mb-2 capitalize">${loc.type.replace('_', ' ')}</p>
-            ${loc.distance ? `<p class="text-xs text-blue-600 font-medium">📍 ${loc.distance} km away</p>` : ''}
-            ${loc.capacity ? `<p class="text-xs text-green-600">👥 Capacity: ${loc.capacity}</p>` : ''}
-            ${loc.available !== undefined ? `<p class="text-xs ${loc.available ? 'text-green-600' : 'text-red-600'}">
+      const infoWindow = new window.google.maps.InfoWindow({
+        content: `
+          <div style="padding: 12px; min-width: 200px;">
+            <h3 style="font-weight: 600; color: #111827; margin-bottom: 4px;">${loc.name}</h3>
+            <p style="font-size: 14px; color: #6b7280; margin-bottom: 8px; text-transform: capitalize;">${loc.type.replace('_', ' ')}</p>
+            ${loc.distance ? `<p style="font-size: 12px; color: #2563eb; font-weight: 500;">📍 ${loc.distance} km away</p>` : ''}
+            ${loc.capacity ? `<p style="font-size: 12px; color: #16a34a;">👥 Capacity: ${loc.capacity}</p>` : ''}
+            ${loc.available !== undefined ? `<p style="font-size: 12px; color: ${loc.available ? '#16a34a' : '#dc2626'};">
               ${loc.available ? '✅ Available' : '❌ Full'}
             </p>` : ''}
-            ${loc.resources ? `<div class="mt-2">
-              <p class="text-xs font-medium text-gray-700">Available Resources:</p>
-              <p class="text-xs text-gray-600">${loc.resources.join(', ')}</p>
+            ${loc.resources ? `<div style="margin-top: 8px;">
+              <p style="font-size: 12px; font-weight: 500; color: #374151;">Available Resources:</p>
+              <p style="font-size: 12px; color: #6b7280;">${loc.resources.join(', ')}</p>
             </div>` : ''}
           </div>
-        `))
-        .addTo(map.current!);
+        `
+      });
+
+      marker.addListener('click', () => {
+        infoWindow.open(map.current, marker);
+      });
+
+      markers.current.push(marker);
     });
   };
 
