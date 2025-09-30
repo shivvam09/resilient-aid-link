@@ -5,14 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MapPin, Shield, Heart, Users, Navigation, Layers, Compass } from "lucide-react";
-
-// Google Maps type declarations
-declare global {
-  interface Window {
-    google: any;
-    initMap: () => void;
-  }
-}
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
 
 interface MapLocation {
   id: string;
@@ -31,9 +25,10 @@ const ReliefMap = () => {
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
   const [isMapLoaded, setIsMapLoaded] = useState<boolean>(false);
   const [compass, setCompass] = useState<number>(0);
+  const [mapboxToken, setMapboxToken] = useState<string>('');
   const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<any>(null);
-  const markers = useRef<any[]>([]);
+  const map = useRef<mapboxgl.Map | null>(null);
+  const markers = useRef<mapboxgl.Marker[]>([]);
 
   // Mock data - In real app, this would come from GPS/offline database
   const mapLocations: MapLocation[] = [
@@ -245,23 +240,6 @@ const ReliefMap = () => {
   ];
 
   useEffect(() => {
-    // Load Google Maps API
-    const loadGoogleMaps = () => {
-      if (window.google) {
-        setIsMapLoaded(true);
-        return;
-      }
-
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.GOOGLE_MAPS_API_KEY || 'YOUR_API_KEY'}&libraries=places`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => setIsMapLoaded(true);
-      document.head.appendChild(script);
-    };
-
-    loadGoogleMaps();
-
     // Compass functionality
     if ('DeviceOrientationEvent' in window) {
       const handleOrientation = (event: DeviceOrientationEvent) => {
@@ -275,7 +253,7 @@ const ReliefMap = () => {
   }, []);
 
   useEffect(() => {
-    if (!isMapLoaded) return;
+    if (!mapboxToken || !mapContainer.current) return;
 
     // Get user location and initialize map
     if (navigator.geolocation) {
@@ -288,7 +266,7 @@ const ReliefMap = () => {
           setUserLocation(location);
           
           // Initialize map with user location
-          if (mapContainer.current && !map.current) {
+          if (!map.current) {
             initializeMap(location);
           }
         },
@@ -297,7 +275,7 @@ const ReliefMap = () => {
           // Fallback to default location (New Delhi)
           const defaultLocation = { lat: 28.6139, lng: 77.2090 };
           setUserLocation(defaultLocation);
-          if (mapContainer.current && !map.current) {
+          if (!map.current) {
             initializeMap(defaultLocation);
           }
         }
@@ -306,34 +284,34 @@ const ReliefMap = () => {
       // Fallback to default location if geolocation is not available
       const defaultLocation = { lat: 28.6139, lng: 77.2090 };
       setUserLocation(defaultLocation);
-      if (mapContainer.current && !map.current) {
+      if (!map.current) {
         initializeMap(defaultLocation);
       }
     }
-  }, [isMapLoaded]);
+  }, [mapboxToken]);
 
   const initializeMap = (location: {lat: number, lng: number}) => {
-    if (!mapContainer.current || !window.google) return;
+    if (!mapContainer.current || !mapboxToken) return;
 
     // Clear existing markers
-    markers.current.forEach(marker => marker.setMap(null));
+    markers.current.forEach(marker => marker.remove());
     markers.current = [];
 
-    // Initialize Google Map
-    map.current = new window.google.maps.Map(mapContainer.current, {
-      center: location,
+    // Set Mapbox access token
+    mapboxgl.accessToken = mapboxToken;
+
+    // Initialize Mapbox map
+    map.current = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: 'mapbox://styles/mapbox/satellite-streets-v12',
+      center: [location.lng, location.lat],
       zoom: 12,
-      mapTypeId: window.google.maps.MapTypeId.HYBRID,
-      styles: [
-        {
-          featureType: "poi",
-          elementType: "labels",
-          stylers: [{ visibility: "off" }]
-        }
-      ],
-      scrollwheel: true,
-      gestureHandling: 'greedy'
+      pitch: 0,
+      bearing: 0
     });
+
+    // Add navigation controls
+    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
     // Add pulsing animation styles
     const userLocationStyle = document.createElement('style');
@@ -373,41 +351,20 @@ const ReliefMap = () => {
       animation: userLocationPulse 2s infinite;
     `;
 
-    const userMarker = new window.google.maps.Marker({
-      position: location,
-      map: map.current,
-      title: "Your Current Location",
-      icon: {
-        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-          <svg width="40" height="40" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <radialGradient id="grad" cx="50%" cy="50%" r="50%">
-                <stop offset="40%" style="stop-color:#ef4444;stop-opacity:1" />
-                <stop offset="70%" style="stop-color:#ef4444;stop-opacity:0" />
-              </radialGradient>
-            </defs>
-            <circle cx="20" cy="20" r="16" fill="url(#grad)" stroke="#ef4444" stroke-width="4"/>
-          </svg>
-        `),
-        scaledSize: new window.google.maps.Size(40, 40),
-        anchor: new window.google.maps.Point(20, 20)
-      }
-    });
-
-    const userInfoWindow = new window.google.maps.InfoWindow({
-      content: `
-        <div style="padding: 12px; min-width: 180px;">
-          <h3 style="font-weight: 600; color: #2563eb; margin-bottom: 4px;">📍 Your Current Location</h3>
-          <p style="font-size: 14px; color: #6b7280;">Lat: ${location.lat.toFixed(6)}</p>
-          <p style="font-size: 14px; color: #6b7280;">Lng: ${location.lng.toFixed(6)}</p>
-          <p style="font-size: 12px; color: #16a34a; margin-top: 8px;">✅ GPS Active</p>
-        </div>
-      `
-    });
-
-    userMarker.addListener('click', () => {
-      userInfoWindow.open(map.current, userMarker);
-    });
+    const userMarker = new mapboxgl.Marker({
+      element: userMarkerElement
+    })
+      .setLngLat([location.lng, location.lat])
+      .setPopup(new mapboxgl.Popup({ offset: 25 })
+        .setHTML(`
+          <div style="padding: 12px; min-width: 180px;">
+            <h3 style="font-weight: 600; color: #2563eb; margin-bottom: 4px;">📍 Your Current Location</h3>
+            <p style="font-size: 14px; color: #6b7280;">Lat: ${location.lat.toFixed(6)}</p>
+            <p style="font-size: 14px; color: #6b7280;">Lng: ${location.lng.toFixed(6)}</p>
+            <p style="font-size: 12px; color: #16a34a; margin-top: 8px;">✅ GPS Active</p>
+          </div>
+        `))
+      .addTo(map.current);
 
     markers.current.push(userMarker);
 
@@ -448,49 +405,27 @@ const ReliefMap = () => {
                              '⚠️';
       markerElement.appendChild(iconElement);
 
-      const marker = new window.google.maps.Marker({
-        position: { lat: loc.latitude, lng: loc.longitude },
-        map: map.current,
-        title: loc.name,
-        icon: {
-          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-            <svg width="30" height="30" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="15" cy="15" r="12" fill="${color}" stroke="white" stroke-width="3"/>
-              <text x="15" y="20" text-anchor="middle" font-size="12" fill="white">
-                ${loc.type === 'shelter' ? '🏠' : 
-                  loc.type === 'safe_zone' ? '🛡️' :
-                  loc.type === 'resource_center' ? '📦' :
-                  loc.type === 'volunteer_hub' ? '👥' :
-                  '⚠️'}
-              </text>
-            </svg>
-          `),
-          scaledSize: new window.google.maps.Size(30, 30),
-          anchor: new window.google.maps.Point(15, 15)
-        }
-      });
-
-      const infoWindow = new window.google.maps.InfoWindow({
-        content: `
-          <div style="padding: 12px; min-width: 200px;">
-            <h3 style="font-weight: 600; color: #111827; margin-bottom: 4px;">${loc.name}</h3>
-            <p style="font-size: 14px; color: #6b7280; margin-bottom: 8px; text-transform: capitalize;">${loc.type.replace('_', ' ')}</p>
-            ${loc.distance ? `<p style="font-size: 12px; color: #2563eb; font-weight: 500;">📍 ${loc.distance} km away</p>` : ''}
-            ${loc.capacity ? `<p style="font-size: 12px; color: #16a34a;">👥 Capacity: ${loc.capacity}</p>` : ''}
-            ${loc.available !== undefined ? `<p style="font-size: 12px; color: ${loc.available ? '#16a34a' : '#dc2626'};">
-              ${loc.available ? '✅ Available' : '❌ Full'}
-            </p>` : ''}
-            ${loc.resources ? `<div style="margin-top: 8px;">
-              <p style="font-size: 12px; font-weight: 500; color: #374151;">Available Resources:</p>
-              <p style="font-size: 12px; color: #6b7280;">${loc.resources.join(', ')}</p>
-            </div>` : ''}
-          </div>
-        `
-      });
-
-      marker.addListener('click', () => {
-        infoWindow.open(map.current, marker);
-      });
+      const marker = new mapboxgl.Marker({
+        element: markerElement
+      })
+        .setLngLat([loc.longitude, loc.latitude])
+        .setPopup(new mapboxgl.Popup({ offset: 25 })
+          .setHTML(`
+            <div style="padding: 12px; min-width: 200px;">
+              <h3 style="font-weight: 600; color: #111827; margin-bottom: 4px;">${loc.name}</h3>
+              <p style="font-size: 14px; color: #6b7280; margin-bottom: 8px; text-transform: capitalize;">${loc.type.replace('_', ' ')}</p>
+              ${loc.distance ? `<p style="font-size: 12px; color: #2563eb; font-weight: 500;">📍 ${loc.distance} km away</p>` : ''}
+              ${loc.capacity ? `<p style="font-size: 12px; color: #16a34a;">👥 Capacity: ${loc.capacity}</p>` : ''}
+              ${loc.available !== undefined ? `<p style="font-size: 12px; color: ${loc.available ? '#16a34a' : '#dc2626'};">
+                ${loc.available ? '✅ Available' : '❌ Full'}
+              </p>` : ''}
+              ${loc.resources ? `<div style="margin-top: 8px;">
+                <p style="font-size: 12px; font-weight: 500; color: #374151;">Available Resources:</p>
+                <p style="font-size: 12px; color: #6b7280;">${loc.resources.join(', ')}</p>
+              </div>` : ''}
+            </div>
+          `))
+        .addTo(map.current);
 
       markers.current.push(marker);
     });
@@ -530,16 +465,32 @@ const ReliefMap = () => {
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <Layers className="w-5 h-5" />
-              Relief Map (Offline Mode)
+              Relief Map
             </CardTitle>
-            <Badge variant="secondary" className="gap-1">
+            <Badge variant={mapboxToken && userLocation ? "default" : "secondary"} className="gap-1">
               <MapPin className="w-3 h-3" />
-              GPS Active
+              {mapboxToken && userLocation ? "GPS Active" : "GPS Inactive"}
             </Badge>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2 mb-4">
+        <CardContent className="space-y-4">
+          {!mapboxToken && (
+            <div className="space-y-2">
+              <Label htmlFor="mapbox-token">Mapbox Public Token</Label>
+              <div className="text-sm text-muted-foreground mb-2">
+                Get your token from <a href="https://mapbox.com/" target="_blank" rel="noopener noreferrer" className="text-primary underline">mapbox.com</a> → Account → Access tokens
+              </div>
+              <Input
+                id="mapbox-token"
+                type="password"
+                placeholder="pk.eyJ1IjoieW91ci11c2VybmFtZSIsImEiOiJhYmMxMjMifQ..."
+                value={mapboxToken}
+                onChange={(e) => setMapboxToken(e.target.value)}
+              />
+            </div>
+          )}
+          
+          <div className="flex flex-wrap gap-2">
             <Button 
               size="sm" 
               variant={selectedType === 'all' ? 'default' : 'outline'}
@@ -575,7 +526,6 @@ const ReliefMap = () => {
               Resources
             </Button>
           </div>
-
 
           {/* Interactive World Map */}
           <div className="relative w-full h-96 rounded-lg overflow-hidden border touch-none">
