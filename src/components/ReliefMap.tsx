@@ -5,8 +5,13 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MapPin, Shield, Heart, Users, Navigation, Layers, Compass } from "lucide-react";
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
+
+declare global {
+  interface Window {
+    google: typeof google;
+    initMap: () => void;
+  }
+}
 
 interface MapLocation {
   id: string;
@@ -25,10 +30,10 @@ const ReliefMap = () => {
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
   const [isMapLoaded, setIsMapLoaded] = useState<boolean>(false);
   const [compass, setCompass] = useState<number>(0);
-  const [mapboxToken, setMapboxToken] = useState<string>('');
+  const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string>('');
   const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-  const markers = useRef<mapboxgl.Marker[]>([]);
+  const map = useRef<google.maps.Map | null>(null);
+  const markers = useRef<google.maps.Marker[]>([]);
 
   // Mock data - In real app, this would come from GPS/offline database
   const mapLocations: MapLocation[] = [
@@ -253,9 +258,36 @@ const ReliefMap = () => {
   }, []);
 
   useEffect(() => {
-    if (!mapboxToken || !mapContainer.current) return;
+    if (!googleMapsApiKey) return;
 
-    // Get user location and initialize map
+    const loadGoogleMaps = () => {
+      // Remove existing script if any
+      const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
+      if (existingScript) {
+        existingScript.remove();
+      }
+
+      // Create and load Google Maps script
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${googleMapsApiKey}&libraries=places&callback=initMap`;
+      script.async = true;
+      script.defer = true;
+
+      // Define the callback function
+      window.initMap = () => {
+        initializeMap();
+      };
+
+      document.head.appendChild(script);
+    };
+
+    loadGoogleMaps();
+  }, [googleMapsApiKey]);
+
+  const initializeMap = () => {
+    if (!mapContainer.current) return;
+
+    // Get user location
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -264,171 +296,115 @@ const ReliefMap = () => {
             lng: position.coords.longitude
           };
           setUserLocation(location);
-          
-          // Initialize map with user location
-          if (!map.current) {
-            initializeMap(location);
-          }
+          createMap(location);
         },
         (error) => {
           console.error('Error getting location:', error);
           // Fallback to default location (New Delhi)
           const defaultLocation = { lat: 28.6139, lng: 77.2090 };
           setUserLocation(defaultLocation);
-          if (!map.current) {
-            initializeMap(defaultLocation);
-          }
+          createMap(defaultLocation);
         }
       );
     } else {
       // Fallback to default location if geolocation is not available
       const defaultLocation = { lat: 28.6139, lng: 77.2090 };
       setUserLocation(defaultLocation);
-      if (!map.current) {
-        initializeMap(defaultLocation);
-      }
+      createMap(defaultLocation);
     }
-  }, [mapboxToken]);
+  };
 
-  const initializeMap = (location: {lat: number, lng: number}) => {
-    if (!mapContainer.current || !mapboxToken) return;
+  const createMap = (location: {lat: number, lng: number}) => {
+    if (!mapContainer.current || !window.google) return;
 
     // Clear existing markers
-    markers.current.forEach(marker => marker.remove());
+    markers.current.forEach(marker => marker.setMap(null));
     markers.current = [];
 
-    // Set Mapbox access token
-    mapboxgl.accessToken = mapboxToken;
-
-    // Initialize Mapbox map
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/satellite-streets-v12',
-      center: [location.lng, location.lat],
+    const mapOptions: google.maps.MapOptions = {
+      center: { lat: location.lat, lng: location.lng },
       zoom: 12,
-      pitch: 0,
-      bearing: 0
+      mapTypeId: google.maps.MapTypeId.ROADMAP,
+    };
+
+    map.current = new google.maps.Map(mapContainer.current, mapOptions);
+
+    // Add user location marker
+    const userMarker = new google.maps.Marker({
+      position: { lat: location.lat, lng: location.lng },
+      map: map.current,
+      title: 'Your Location',
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 15,
+        fillColor: '#ef4444',
+        fillOpacity: 1,
+        strokeColor: '#ffffff',
+        strokeWeight: 3,
+      },
     });
 
-    // Add navigation controls
-    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    const userInfoWindow = new google.maps.InfoWindow({
+      content: `
+        <div style="padding: 12px; min-width: 180px;">
+          <h3 style="font-weight: 600; color: #2563eb; margin-bottom: 4px;">📍 Your Current Location</h3>
+          <p style="font-size: 14px; color: #6b7280;">Lat: ${location.lat.toFixed(6)}</p>
+          <p style="font-size: 14px; color: #6b7280;">Lng: ${location.lng.toFixed(6)}</p>
+          <p style="font-size: 12px; color: #16a34a; margin-top: 8px;">✅ GPS Active</p>
+        </div>
+      `,
+    });
 
-    // Add pulsing animation styles
-    const userLocationStyle = document.createElement('style');
-    userLocationStyle.textContent = `
-      @keyframes userLocationPulse {
-        0% { 
-          transform: scale(1);
-          box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
-        }
-        50% { 
-          transform: scale(1.1);
-          box-shadow: 0 0 30px rgba(239, 68, 68, 0.8);
-        }
-        100% { 
-          transform: scale(1);
-          box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
-        }
-      }
-      @keyframes emergencyPulse {
-        0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
-        70% { box-shadow: 0 0 0 10px rgba(220, 38, 38, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
-      }
-    `;
-    document.head.appendChild(userLocationStyle);
-
-    // Create user location marker
-    const userMarkerElement = document.createElement('div');
-    userMarkerElement.style.cssText = `
-      width: 40px;
-      height: 40px;
-      background: radial-gradient(circle, #ef4444 40%, transparent 70%);
-      border: 4px solid #ef4444;
-      border-radius: 50%;
-      cursor: pointer;
-      position: relative;
-      animation: userLocationPulse 2s infinite;
-    `;
-
-    const userMarker = new mapboxgl.Marker({
-      element: userMarkerElement
-    })
-      .setLngLat([location.lng, location.lat])
-      .setPopup(new mapboxgl.Popup({ offset: 25 })
-        .setHTML(`
-          <div style="padding: 12px; min-width: 180px;">
-            <h3 style="font-weight: 600; color: #2563eb; margin-bottom: 4px;">📍 Your Current Location</h3>
-            <p style="font-size: 14px; color: #6b7280;">Lat: ${location.lat.toFixed(6)}</p>
-            <p style="font-size: 14px; color: #6b7280;">Lng: ${location.lng.toFixed(6)}</p>
-            <p style="font-size: 12px; color: #16a34a; margin-top: 8px;">✅ GPS Active</p>
-          </div>
-        `))
-      .addTo(map.current);
+    userMarker.addListener('click', () => {
+      userInfoWindow.open(map.current, userMarker);
+    });
 
     markers.current.push(userMarker);
 
-    // Add location markers
-    mapLocations.forEach((loc) => {
-      const color = loc.type === 'shelter' ? '#16a34a' : 
-                   loc.type === 'safe_zone' ? '#2563eb' :
-                   loc.type === 'resource_center' ? '#ea580c' :
-                   loc.type === 'volunteer_hub' ? '#7c3aed' :
-                   '#dc2626';
+    // Add markers for relief locations
+    filteredLocations.forEach((loc) => {
+      const color = getLocationColor(loc.type);
+      
+      const marker = new google.maps.Marker({
+        position: { lat: loc.latitude, lng: loc.longitude },
+        map: map.current,
+        title: loc.name,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 12,
+          fillColor: color,
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeWeight: 2,
+        },
+      });
 
-      const markerElement = document.createElement('div');
-      markerElement.style.cssText = `
-        width: 30px;
-        height: 30px;
-        background-color: ${color};
-        border: 3px solid white;
-        border-radius: 50%;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-        ${loc.type === 'emergency' ? 'animation: emergencyPulse 2s infinite;' : ''}
-      `;
+      const infoWindow = new google.maps.InfoWindow({
+        content: `
+          <div style="padding: 12px; min-width: 200px;">
+            <h3 style="font-weight: 600; color: #111827; margin-bottom: 4px;">${loc.name}</h3>
+            <p style="font-size: 14px; color: #6b7280; margin-bottom: 8px; text-transform: capitalize;">${loc.type.replace('_', ' ')}</p>
+            ${loc.distance ? `<p style="font-size: 12px; color: #2563eb; font-weight: 500;">📍 ${loc.distance} km away</p>` : ''}
+            ${loc.capacity ? `<p style="font-size: 12px; color: #16a34a;">👥 Capacity: ${loc.capacity}</p>` : ''}
+            ${loc.available !== undefined ? `<p style="font-size: 12px; color: ${loc.available ? '#16a34a' : '#dc2626'};">
+              ${loc.available ? '✅ Available' : '❌ Full'}
+            </p>` : ''}
+            ${loc.resources ? `<div style="margin-top: 8px;">
+              <p style="font-size: 12px; font-weight: 500; color: #374151;">Available Resources:</p>
+              <p style="font-size: 12px; color: #6b7280;">${loc.resources.join(', ')}</p>
+            </div>` : ''}
+          </div>
+        `,
+      });
 
-      const iconElement = document.createElement('div');
-      iconElement.style.cssText = `
-        color: white;
-        font-size: 12px;
-        font-weight: bold;
-      `;
-      iconElement.innerHTML = loc.type === 'shelter' ? '🏠' : 
-                             loc.type === 'safe_zone' ? '🛡️' :
-                             loc.type === 'resource_center' ? '📦' :
-                             loc.type === 'volunteer_hub' ? '👥' :
-                             '⚠️';
-      markerElement.appendChild(iconElement);
-
-      const marker = new mapboxgl.Marker({
-        element: markerElement
-      })
-        .setLngLat([loc.longitude, loc.latitude])
-        .setPopup(new mapboxgl.Popup({ offset: 25 })
-          .setHTML(`
-            <div style="padding: 12px; min-width: 200px;">
-              <h3 style="font-weight: 600; color: #111827; margin-bottom: 4px;">${loc.name}</h3>
-              <p style="font-size: 14px; color: #6b7280; margin-bottom: 8px; text-transform: capitalize;">${loc.type.replace('_', ' ')}</p>
-              ${loc.distance ? `<p style="font-size: 12px; color: #2563eb; font-weight: 500;">📍 ${loc.distance} km away</p>` : ''}
-              ${loc.capacity ? `<p style="font-size: 12px; color: #16a34a;">👥 Capacity: ${loc.capacity}</p>` : ''}
-              ${loc.available !== undefined ? `<p style="font-size: 12px; color: ${loc.available ? '#16a34a' : '#dc2626'};">
-                ${loc.available ? '✅ Available' : '❌ Full'}
-              </p>` : ''}
-              ${loc.resources ? `<div style="margin-top: 8px;">
-                <p style="font-size: 12px; font-weight: 500; color: #374151;">Available Resources:</p>
-                <p style="font-size: 12px; color: #6b7280;">${loc.resources.join(', ')}</p>
-              </div>` : ''}
-            </div>
-          `))
-        .addTo(map.current);
+      marker.addListener('click', () => {
+        infoWindow.open(map.current, marker);
+      });
 
       markers.current.push(marker);
     });
+
+    setIsMapLoaded(true);
   };
 
   const getLocationIcon = (type: string) => {
@@ -442,14 +418,14 @@ const ReliefMap = () => {
     }
   };
 
-  const getLocationColor = (type: string) => {
+  const getLocationColor = (type: string): string => {
     switch (type) {
-      case 'shelter': return 'shelter';
-      case 'safe_zone': return 'safe';
-      case 'resource_center': return 'resource';
-      case 'volunteer_hub': return 'primary';
-      case 'emergency': return 'emergency';
-      default: return 'muted';
+      case 'shelter': return '#16a34a';
+      case 'safe_zone': return '#2563eb';
+      case 'resource_center': return '#ea580c';
+      case 'volunteer_hub': return '#7c3aed';
+      case 'emergency': return '#dc2626';
+      default: return '#6b7280';
     }
   };
 
@@ -467,25 +443,25 @@ const ReliefMap = () => {
               <Layers className="w-5 h-5" />
               Relief Map
             </CardTitle>
-            <Badge variant={mapboxToken && userLocation ? "default" : "secondary"} className="gap-1">
+            <Badge variant={googleMapsApiKey && userLocation ? "default" : "secondary"} className="gap-1">
               <MapPin className="w-3 h-3" />
-              {mapboxToken && userLocation ? "GPS Active" : "GPS Inactive"}
+              {googleMapsApiKey && userLocation ? "GPS Active" : "GPS Inactive"}
             </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!mapboxToken && (
+          {!googleMapsApiKey && (
             <div className="space-y-2">
-              <Label htmlFor="mapbox-token">Mapbox Public Token</Label>
+              <Label htmlFor="google-maps-key">Google Maps API Key</Label>
               <div className="text-sm text-muted-foreground mb-2">
-                Get your token from <a href="https://mapbox.com/" target="_blank" rel="noopener noreferrer" className="text-primary underline">mapbox.com</a> → Account → Access tokens
+                Get your API key from <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-primary underline">Google Cloud Console</a> → APIs & Services → Credentials
               </div>
               <Input
-                id="mapbox-token"
+                id="google-maps-key"
                 type="password"
-                placeholder="pk.eyJ1IjoieW91ci11c2VybmFtZSIsImEiOiJhYmMxMjMifQ..."
-                value={mapboxToken}
-                onChange={(e) => setMapboxToken(e.target.value)}
+                placeholder="AIzaSyABcDeFgHiJkLmNoPqRsTuVwXyZ1234567"
+                value={googleMapsApiKey}
+                onChange={(e) => setGoogleMapsApiKey(e.target.value)}
               />
             </div>
           )}
@@ -525,110 +501,130 @@ const ReliefMap = () => {
               <Heart className="w-3 h-3" />
               Resources
             </Button>
-          </div>
-
-          {/* Interactive World Map */}
-          <div className="relative w-full h-96 rounded-lg overflow-hidden border touch-none">
-            <div ref={mapContainer} className="absolute inset-0 touch-none" />
-            
-            {/* Compass */}
-            <div className="absolute top-4 left-4 bg-background/90 backdrop-blur-sm rounded-full p-3 shadow-lg">
-              <div 
-                className="w-8 h-8 flex items-center justify-center transition-transform duration-300"
-                style={{ transform: `rotate(${compass}deg)` }}
-              >
-                <Compass className="w-6 h-6 text-primary" />
-              </div>
-            </div>
-
-            {/* Map Legend */}
-            <div className="absolute bottom-4 right-4 bg-background/90 backdrop-blur-sm rounded-lg p-3 shadow-lg">
-              <div className="text-xs font-semibold mb-2">Legend</div>
-              <div className="space-y-1 text-xs">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                  <span>Your Location</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                  <span>Shelters</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                  <span>Safe Zones</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                  <span>Resources</span>
-                </div>
-              </div>
-            </div>
-
+            <Button 
+              size="sm" 
+              variant={selectedType === 'volunteer_hub' ? 'default' : 'outline'}
+              onClick={() => setSelectedType('volunteer_hub')}
+              className="gap-1"
+            >
+              <Users className="w-3 h-3" />
+              Volunteers
+            </Button>
+            <Button 
+              size="sm" 
+              variant={selectedType === 'emergency' ? 'default' : 'outline'}
+              onClick={() => setSelectedType('emergency')}
+              className="gap-1"
+            >
+              <Navigation className="w-3 h-3" />
+              Emergency
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Location List */}
-      <div className="space-y-3">
-        <h3 className="text-lg font-semibold text-foreground">
-          Nearby Locations ({filteredLocations.length})
-        </h3>
-        {filteredLocations.map((location) => {
-          const Icon = getLocationIcon(location.type);
-          const color = getLocationColor(location.type);
-          
-          return (
-            <Card key={location.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="pt-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex gap-3">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                      color === 'shelter' ? 'bg-shelter/10' :
-                      color === 'safe' ? 'bg-safe/10' :
-                      color === 'resource' ? 'bg-resource/10' :
-                      color === 'emergency' ? 'bg-emergency/10' :
-                      'bg-primary/10'
-                    }`}>
-                      <Icon className={`w-5 h-5 ${
-                        color === 'shelter' ? 'text-shelter' :
-                        color === 'safe' ? 'text-safe' :
-                        color === 'resource' ? 'text-resource' :
-                        color === 'emergency' ? 'text-emergency' :
-                        'text-primary'
-                      }`} />
+      {/* Map Container */}
+      <Card>
+        <CardContent className="p-0">
+          <div 
+            ref={mapContainer}
+            className="w-full h-96 rounded-lg"
+            style={{ minHeight: '400px' }}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Compass */}
+      <Card>
+        <CardContent className="flex items-center justify-center p-6">
+          <div className="flex items-center gap-4">
+            <div 
+              className="w-16 h-16 border-4 border-primary rounded-full flex items-center justify-center relative"
+              style={{ transform: `rotate(${compass}deg)` }}
+            >
+              <Compass className="w-6 h-6 text-primary" />
+              <div className="absolute -top-2 w-1 h-4 bg-red-500 rounded-full" />
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground">Compass Heading</p>
+              <p className="font-bold text-lg">{Math.round(compass)}°</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Nearby Locations List */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Nearby Locations</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {filteredLocations.slice(0, 5).map((location) => {
+              const IconComponent = getLocationIcon(location.type);
+              return (
+                <div key={location.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-full`} style={{ backgroundColor: getLocationColor(location.type) }}>
+                      <IconComponent className="w-4 h-4 text-white" />
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-medium text-foreground">{location.name}</h4>
-                        {location.type === 'emergency' && (
-                          <Badge variant="destructive" className="text-xs">ACTIVE</Badge>
-                        )}
-                      </div>
-                      <div className="text-sm text-muted-foreground mb-2">
-                        {location.distance && `${location.distance} km away`}
-                        {location.capacity && ` • Capacity: ${location.capacity}`}
-                      </div>
-                      {location.resources && (
-                        <div className="flex flex-wrap gap-1">
-                          {location.resources.map((resource, idx) => (
-                            <Badge key={idx} variant="secondary" className="text-xs">
-                              {resource}
-                            </Badge>
-                          ))}
-                        </div>
+                    <div>
+                      <h4 className="font-medium">{location.name}</h4>
+                      <p className="text-sm text-muted-foreground capitalize">
+                        {location.type.replace('_', ' ')} 
+                        {location.distance && ` • ${location.distance} km away`}
+                      </p>
+                      {location.available !== undefined && (
+                        <Badge variant={location.available ? "default" : "destructive"} className="text-xs">
+                          {location.available ? "Available" : "Full"}
+                        </Badge>
                       )}
                     </div>
                   </div>
                   <Button size="sm" variant="outline">
-                    <Navigation className="w-4 h-4 mr-1" />
                     Navigate
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Map Legend */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Map Legend</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#16a34a' }}></div>
+              <span className="text-sm">Shelters</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#2563eb' }}></div>
+              <span className="text-sm">Safe Zones</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#ea580c' }}></div>
+              <span className="text-sm">Resource Centers</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#7c3aed' }}></div>
+              <span className="text-sm">Volunteer Hubs</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#dc2626' }}></div>
+              <span className="text-sm">Emergency Zones</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#ef4444' }}></div>
+              <span className="text-sm">Your Location</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
